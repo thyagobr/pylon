@@ -4,6 +4,8 @@ require 'open-uri'
 require 'action_view'
 #require 'byebug'
 
+require 'pylon/tracer'
+
 module Pylon
   # Applies to all Rails apps
   class General
@@ -36,10 +38,48 @@ module Pylon
     end
 
     def self.set_trace
-      trace = TracePoint.new(:call, :return) { |tp| p "*** #{[tp.path.gsub(Rails.root.to_s, ''), tp.lineno, tp.event, tp.method_id]}" if tp.path.include?(Rails.root.to_s) }
+      sequence_tracer = []
+      #trace = TracePoint.new(:call, :return) { |tp| p "*** #{[tp.path.gsub(Rails.root.to_s, ''), tp.lineno, tp.event, tp.defined_class, tp.method_id, tp.parameters]}" if tp.path.include?(Rails.root.to_s) }
+      #trace = TracePoint.new(:call) { |tp| p "*** #{tp.binding.eval('self')} -- #{tp.callee_id} --> #{tp.defined_class}##{tp.method_id}(#{tp.parameters})" if tp.path.include?(Rails.root.to_s) }
+      trace = TracePoint.new(:call, :return) do |tp|
+        sequence_tracer << [tp.defined_class, tp.method_id, tp.event] if tp.path.include?(Rails.root.to_s)
+      end
       trace.enable
       yield
       trace.disable
+
+      File.open("sequence_trace.txt", "w") do |file|
+        last_call = sequence_tracer[0]
+        last_call[0] = parse_class_name(last_call[0])
+        return_stack = Array(last_call[0])
+        file.puts "System->#{last_call[0]}:#{last_call[1]}"
+        sequence_tracer[1..-1].each do |method_call|
+          method_call[0] = parse_class_name(method_call[0])
+          if method_call[2] == :return
+            file.puts "#{return_stack.pop}<--#{method_call[0]}:#{method_call[1]}"
+          else
+            return_stack << method_call[0]
+            file.puts "#{last_call[0]}->#{method_call[0]}:#{method_call[1]}"
+          end
+          last_call = method_call
+        end
+      end
+    end
+
+    def self.parse_class_name(klass)
+      class_name = klass.to_s
+      class_name = if class_name.starts_with?("#")
+                     class_name.gsub("#<Class:","").gsub(">","")
+                   else
+                     class_name.to_s
+                   end
+      class_name.gsub("::","_")
     end
   end
+
+  # Only run the byebug if the test is the one you want (in case multiple tests use a method)
+  #
+  # if caller.any? { |test| test.include?("test_translate_quotas_to_target_groups_age_range_not_supported_raise_error") }
+  #   require"byebug";byebug
+  # end
 end
