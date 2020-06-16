@@ -6,8 +6,6 @@ context.font = "bold 16px Arial";
 const textPadding = 10;
 const distanceBetweenBoxes = 50;
 
-let classes = [];
-
 function drawBox({text, x, y})
 {
   let padding = 10;
@@ -68,6 +66,11 @@ let system = {
     caller_class = line.split("->")[0];
     callee_class = line.split("->")[1].split(":")[0];
     method = line.split("->")[1].split(":")[1];
+
+    // 1. Add or fetch class from list
+    // 2. Retrieev offsets and width
+    // 3. Get global Y offset
+    // 4. Roll with it.
 
     width1 = drawBox({ text: caller_class, x: 10, y: 10 });
     width2 = drawBox({ text: callee_class, x: width1 + distanceBetweenBoxes, y: 10 });

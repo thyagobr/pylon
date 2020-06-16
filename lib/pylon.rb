@@ -38,7 +38,10 @@ module Pylon
     def self.set_trace
       sequence_tracer = []
       trace = TracePoint.new(:call, :return) do |tp|
-        sequence_tracer << [tp.defined_class, tp.method_id, tp.event] if tp.path.include?(Rails.root.to_s)
+        if tp.path.include?(Rails.root.to_s)
+          sequence_tracer << [tp.defined_class, tp.method_id, tp.event]
+          #puts "#{sequence_tracer[-1][0]} -- #{sequence_tracer[-1][1]} -- #{sequence_tracer[-1][2]}"
+        end
       end
       trace.enable
       yield
@@ -47,18 +50,22 @@ module Pylon
       File.open("sequence_trace.txt", "w") do |file|
         last_call = sequence_tracer[0]
         last_call[0] = parse_class_name(last_call[0])
-        return_stack = Array(last_call[0])
+        return_stack = [{ class: last_call[0], method: last_call[1] }]
         file.puts "actor System"
         file.puts "System->#{last_call[0]}:#{last_call[1]}"
         sequence_tracer[1..-1].each do |method_call|
           method_call[0] = parse_class_name(method_call[0])
           if method_call[2] == :return
-            return_to = return_stack.pop
+            return_to = return_stack.find { |call| call[:class] == method_call[0] && call[:method] == method_call[1] }
+            next if return_to.nil?
+            return_to_class = return_to&.fetch(:class)
+            return_to_method = return_to&.fetch(:method)
             # Let's skip the return arrow if the call is to the class itself, it's unnecessary
-            next if return_to == method_call[0]
-            file.puts "#{return_to}<--#{method_call[0]}:#{method_call[1]}"
+            if return_to_class != method_call[0]
+              file.puts "#{return_to_class}<--#{method_call[0]}:#{method_call[1]}"
+            end
           else
-            return_stack << method_call[0]
+            return_stack << { class: method_call[0], method: method_call[1] }
             file.puts "#{last_call[0]}->#{method_call[0]}:#{method_call[1]}"
           end
           last_call = method_call
